@@ -16,3 +16,6 @@ coverage/
 
 # Lokalna próba fazy 0 (scripts/sandbox.sh)
 .sandbox/
+
+# Paczka repo do przeniesienia na inny komputer
+*.bundle

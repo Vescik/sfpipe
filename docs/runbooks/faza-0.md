@@ -2,6 +2,10 @@
 
 Kroki, które wymagają Waszego dostępu do GitHuba i orgów Salesforce. Kolejność ma znaczenie: baseline (kroki 7–8) idzie **przed** rulesetami (krok 9), żeby pushe linii bazowej nie były blokowane.
 
+Runbook zakłada repo `salesforce` w układzie harnessu: User Story w Azure Boards, gałęzie `work-item/<id>-<opis>`, folder `work-items/` i hook `commit-msg`, który przepuszcza tylko tematy `[chore] …`, `[docs] …` oraz `[WI-<id>] … — AB#<id>`. Dlatego wszystkie commity poniżej mają prefiks `[chore]`.
+
+**Windows (PowerShell):** polecenia `git`, `sf`, `gh`, `npm` i `sfpipe` działają tak samo jak poniżej. Różnice są w trzech miejscach: zmienne środowiskowe (krok 10), `openssl` (krok 3) i blokada skryptów `.ps1`. Jeśli PowerShell odmawia uruchomienia `sfpipe` („running scripts is disabled”), wywołuj `sfpipe.cmd`.
+
 Na końcu `sfpipe doctor` (krok 10) powinien pokazać same `✔`, z jednym oczekiwanym wyjątkiem opisanym w kroku 9.
 
 ## Próba lokalna
@@ -56,6 +60,8 @@ Wszystkie inne pozycje powinny mieć `✔`. Żeby pracować w piaskownicy z pole
    npm ci && npm run build && npm install --global ./packages/cli
    ```
 
+   Jeśli globalny katalog npm wymaga `sudo` (np. `/usr/local` z instalatora Node), zainstaluj do katalogu użytkownika, który jest w `PATH`: `npm install --global --prefix ~/.local ./packages/cli`.
+
 2. W katalogu głównym repo `salesforce`:
 
    ```bash
@@ -65,12 +71,29 @@ Wszystkie inne pozycje powinny mieć `✔`. Żeby pracować w piaskownicy z pole
    Sprawdza format source (`sfdx-project.json`), `.forceignore` i remote. Jeśli repo jest w formacie Metadata API, doctor podpowie komendę konwersji.
 
 3. Domknij stare gałęzie: zmerguj albo zamknij to, co jest w toku, i usuń zmergowane (`git branch -r --merged origin/main`). Nowy model zaczyna od czystego `main`.
-4. Utwórz konfigurację, uzupełnij `mirror.types` i `users`, sprawdź ją i wprowadź do `main` przez PR:
+4. Utwórz konfigurację na gałęzi `chore/sfpipe-init`:
 
    ```bash
+   git switch -c chore/sfpipe-init
    sfpipe init
-   sfpipe config validate
    ```
+
+   W `.sfpipe/config.yml` ustaw:
+   - `org` w każdym środowisku: te same aliasy, których zespół używa w `config/harness.local.json`. Jeden login `sf` służy wtedy harnessowi i sfpipe. Alias jest też nazwą GitHub Environment z kroku 4;
+   - `workItem.organization` i `workItem.project` (opcjonalnie): linki do Azure Boards w komentarzach PR;
+   - `mirror.types`, `users` (login w orgu dev → e-mail autora commitów) i `deployWindow`.
+
+   Sprawdź i wprowadź do `main` przez PR:
+
+   ```bash
+   sfpipe config validate
+   git add .sfpipe
+   git commit -m "[chore] add sfpipe configuration"
+   git push -u origin chore/sfpipe-init
+   gh pr create --fill --base main
+   ```
+
+   Zmiana poza `force-app/` i `work-items/` uruchamia w CI harnessu pełny zestaw sprawdzeń; to oczekiwane. Manifesty US (`work-items/<id>-<opis>/sfpipe.yml`, od fazy 1) już go nie uruchamiają.
 
 ## 3. Salesforce: logowanie JWT dla każdego orga
 
@@ -82,7 +105,13 @@ Dla każdego z orgów `sf-dev`, `sf-uat`, `sf-stage`, `sf-prod`:
    openssl req -x509 -newkey rsa:4096 -sha256 -days 730 -nodes -keyout sf-uat.key -out sf-uat.crt -subj "/CN=sfpipe-uat"
    ```
 
-   Klucz trzymaj w menedżerze haseł; `*.key` jest w `.gitignore`.
+   Klucz trzymaj w menedżerze haseł; `*.key` jest w `.gitignore`. Generuj go poza katalogiem repo.
+
+   Na Windows `openssl` jest w Git for Windows, ale nie ma go w `PATH` PowerShella. Wywołaj go pełną ścieżką, z tymi samymi argumentami:
+
+   ```powershell
+   & "C:\Program Files\Git\usr\bin\openssl.exe" req -x509 -newkey rsa:4096 -sha256 -days 730 -nodes -keyout sf-uat.key -out sf-uat.crt -subj "/CN=sfpipe-uat"
+   ```
 
 2. Dedykowany użytkownik integracyjny (np. `sfpipe@firma.pl` na prod, z sufiksem sandboxa w sandboxach) z uprawnieniami do deployu przez Metadata API: m.in. *API Enabled* i *Modify Metadata Through Metadata API Functions*; do deployu Apex i uruchamiania testów zwykle także *Modify All Data* lub *Author Apex*. Dokładny zestaw ustalcie z adminem Salesforce.
 3. **External Client App** (lub Connected App): OAuth z zakresami *api* i *refresh_token, offline_access*, włączony JWT Bearer Flow, wgrany `sf-uat.crt`, polityka *Admin approved users are pre-authorized*, dostęp dla użytkownika integracyjnego przez permission set. Consumer Key to `SF_CLIENT_ID`.
@@ -120,20 +149,20 @@ Ograniczenia *Deployment branches* ustawimy w fazie 2–3 razem z workflowami de
 
 Workflowy (push lustra do `dev`, PR-y, auto-merge, labele) działają przez dedykowaną GitHub App, nie przez osobisty token. Potrzebna od fazy 1, ale utwórz ją teraz, bo jest bypassem w rulesecie `dev` (krok 9).
 
-1. **Organization settings → Developer settings → GitHub Apps → New GitHub App** (`sfpipe-bot`), bez webhooka. Uprawnienia repozytorium: *Contents* read/write, *Pull requests* read/write, *Issues* read/write, *Metadata* read. Uprawnienia organizacji: *Projects* read/write.
+1. **Organization settings → Developer settings → GitHub Apps → New GitHub App** (`sfpipe-bot`), bez webhooka. Uprawnienia repozytorium: *Contents* read/write, *Pull requests* read/write, *Issues* read/write (komentarze w PR idą przez API issues), *Metadata* read. Uprawnienia organizacji: brak; *Projects* read/write tylko w wariancie z GitHub Issues.
 2. Zainstaluj ją tylko na repo `salesforce`.
 3. W repo `salesforce`: zmienna `SFPIPE_APP_ID` i sekret `SFPIPE_APP_PRIVATE_KEY` (klucz prywatny aplikacji).
 
-## 6. Labele i Project
+## 6. Azure Boards ↔ GitHub
 
-```bash
-gh label create user-story --color 0E8A16 --description "User Story (sfpipe)"
-gh label create sf:uat --color FBCA04 --description "US wdrożony na UAT"
-gh label create sf:stage --color F9A825 --description "US wdrożony na stage"
-gh label create sf:prod --color 5319E7 --description "US wdrożony na prod"
-```
+User Story są w Azure Boards. sfpipe linkuje je tak jak harness: przez `AB#<id>` w tematach commitów i opisach PR. Link tworzy aplikacja Azure Boards na GitHubie, więc trzeba ją mieć podłączoną do repo `salesforce`:
 
-Project organizacji z polem jednokrotnego wyboru **Środowisko**: `dev`, `uat`, `stage`, `prod`.
+1. W Azure DevOps: **Project settings → Boards → GitHub connections**. Repo `salesforce` powinno być na liście; jeśli nie, **Add repositories**.
+2. Test: w dowolnym PR wpisz `AB#<id istniejącego US>`. Po chwili w US, w sekcji *Development*, pojawi się link do PR.
+
+sfpipe nie zmienia stanu work itemów w ADO. Tak jak w procesie harnessu, stan zmienia człowiek.
+
+*Wariant z GitHub Issues* (`workItem.provider: github-issues`): zamiast tego kroku utwórz label `user-story` (`gh label create user-story --color 0E8A16`).
 
 ## 7. Baseline: `main`, `uat`, `stage`
 
@@ -151,9 +180,11 @@ Celem jest, żeby każda gałąź była zgodna ze swoim orgiem.
    git switch main && git pull
    git switch -c baseline/prod
    sf project retrieve start --manifest manifest/tracked.xml --target-org sf-prod --wait 120
-   git add -A && git commit -m "baseline: stan prod"
+   git add -A && git commit -m "[chore] baseline: align main with prod"
    git push -u origin baseline/prod
    ```
+
+   Harness ma już własny `manifest/package.xml` (startowy, nie zakres deployu). `tracked.xml` to osobny plik; nie nadpisuj nim `package.xml`.
 
    Retrieve aktualizuje i dodaje pliki, ale nie usuwa tych, których w orgu już nie ma. Żeby je znaleźć, zrób retrieve do pustego katalogu (`--output-dir /tmp/prod`) i porównaj z `force-app` (`diff -rq`).
 
@@ -163,7 +194,7 @@ Celem jest, żeby każda gałąź była zgodna ze swoim orgiem.
    git switch main && git pull
    git switch -c uat
    sf project retrieve start --manifest manifest/tracked.xml --target-org sf-uat --wait 120
-   git add -A && git commit -m "baseline: stan uat"
+   git add -A && git commit -m "[chore] baseline: uat org state"
    git push -u origin uat
    ```
 
@@ -177,7 +208,7 @@ Pierwszy pełny snapshot orga dev. Full Copy ma rozmiar produkcji, więc retriev
 git switch main && git pull
 git switch -c dev
 sf project retrieve start --manifest manifest/tracked.xml --target-org sf-dev --wait 240
-git add -A && git commit -m "dev: pierwszy snapshot lustra"
+git add -A && git commit -m "[chore] dev mirror: first snapshot"
 git push -u origin dev
 ```
 
@@ -193,6 +224,8 @@ Od fazy 1 gałąź `dev` aktualizuje już tylko workflow lustra.
 | `sfpipe stage-main` | `stage`, `main` | jak wyżej, ale 0 approvals i bez wymogu rozwiązanych wątków |
 | `sfpipe dev` | `dev` | Restrict updates (bypass: aplikacja `sfpipe-bot`); Restrict deletions; Block force pushes |
 
+**Repo z harnessem ma już ruleset na `main`** z wymaganym checkiem `PR CI / Gate`. Nie usuwaj go; ruleset `sfpipe stage-main` działa obok, a GitHub łączy reguły (wygrywa ostrzejsza). Skutek: na `main` zostaje tylko merge commit. To zgodne z procesem harnessu, który i tak merguje PR Feature do `main` merge commitem.
+
 Check `sfpipe-pr` powstaje dopiero w fazie 2. Do tego czasu nie da się go wybrać w rulesecie, a doctor pokaże błąd „brak wymaganego checku sfpipe-pr” dla `uat`, `stage` i `main`. To oczekiwany wyjątek. Konfigurację (`.sfpipe/config.yml`) zmieniacie do tego czasu zwykłym PR-em do `main`.
 
 ## 10. Doctor
@@ -201,6 +234,12 @@ Lokalnie, z tokenem z `gh`:
 
 ```bash
 GH_TOKEN="$(gh auth token)" sfpipe doctor
+```
+
+W PowerShellu:
+
+```powershell
+$env:GH_TOKEN = gh auth token; sfpipe doctor; Remove-Item Env:GH_TOKEN
 ```
 
 Sprawdzenie sekretów w Environments wymaga uprawnień admina repo; bez nich doctor oznaczy je jako pominięte.

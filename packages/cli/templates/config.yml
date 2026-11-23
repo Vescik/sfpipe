@@ -3,9 +3,17 @@
 # Alias orga (`org`) jest też nazwą GitHub Environment z sekretami; domyślnie sf-<środowisko>.
 
 workItem:
-  provider: github-issues
-  label: user-story            # issue z tym labelem to User Story
-  branchPrefix: wi/
+  provider: azure-boards       # User Story w Azure Boards, linkowane z GitHubem przez AB#<id>
+  # organization: contoso      # opcjonalnie, razem z project: linki do ADO w komentarzach PR
+  # project: Salesforce
+  branchPrefix: work-item/     # work-item/<id>-<opis>: jeden US lub Bug
+  featurePrefix: feature/      # feature/<id>-<opis>: kilka US dostarczanych razem
+  manifest: "work-items/{id}-{slug}/sfpipe.yml"   # obok design.md; folder dobierany po ID
+
+commits:                       # tematy commitów tworzonych przez sfpipe (zgodne z hookiem commit-msg harnessu)
+  workItem: "[WI-{id}] {message} — AB#{id}"
+  feature: "[FEATURE-{id}] {message} — AB#{id}"
+  maintenance: "[chore] {message}"   # lustro dev, back-sync, baseline
 
 baseBranch: main               # gałąź produkcji
 

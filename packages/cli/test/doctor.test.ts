@@ -70,6 +70,19 @@ describe('repo check', () => {
     mkdirSync(path.join(root, 'force-app'));
     results = byTitle(await repoCheck.run(context({ cwd: root, loaded: loadedAt(root) })));
     expect(results['sfdx-project.json']!.status).toBe('ok');
+    expect(results['manifesty work itemów']).toMatchObject({ status: 'ok', detail: expect.stringContaining('powstanie przy pierwszym') });
+  });
+
+  it('warns about two work-item folders for one ID', async () => {
+    const root = tempDir();
+    for (const name of ['5001-approval', '5001-approval-v2', '5002-other']) {
+      mkdirSync(path.join(root, 'work-items', name), { recursive: true });
+    }
+    const results = byTitle(await repoCheck.run(context({ cwd: root, loaded: loadedAt(root) })));
+    expect(results['manifesty work itemów']).toMatchObject({
+      status: 'warn',
+      detail: 'kilka folderów dla jednego ID (5001: 5001-approval, 5001-approval-v2)',
+    });
   });
 
   it('detects a Metadata API format repo', async () => {

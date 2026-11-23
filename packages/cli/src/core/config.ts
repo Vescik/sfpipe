@@ -5,6 +5,7 @@ import { parseDocument } from 'yaml';
 import { z } from 'zod';
 import { parseDeployWindow } from './deploy-window.js';
 import { SfpipeError } from './errors.js';
+import { commitTemplateError, manifestTemplateError, type CommitKind } from './work-item.js';
 
 z.config(z.locales.pl());
 
@@ -71,16 +72,65 @@ const envSchema = z.preprocess(
 
 const DEFAULT_TEST_NAMING = ['{name}Test', '{name}_Test'];
 
+/** Branch prefixes sfpipe creates itself; work-item prefixes and env branches must not use them. */
+export const RESERVED_PREFIXES = ['promote/', 'release/', 'hotfix/', 'sync/'] as const;
+
+const branchPrefix = z
+  .string()
+  .regex(/^[a-z0-9-]+\/$/, 'Oczekiwano prefiksu zakończonego "/", np. "work-item/"')
+  .refine((value) => !(RESERVED_PREFIXES as readonly string[]).includes(value), {
+    message: `Prefiks zarezerwowany przez sfpipe (${RESERVED_PREFIXES.join(', ')})`,
+  });
+
+const manifestTemplate = z.string().superRefine((value, ctx) => {
+  const message = manifestTemplateError(value);
+  if (message) ctx.addIssue({ code: 'custom', message });
+});
+
+const commitTemplate = (kind: CommitKind) =>
+  z.string().superRefine((value, ctx) => {
+    const message = commitTemplateError(value, kind);
+    if (message) ctx.addIssue({ code: 'custom', message });
+  });
+
+const workItemCommon = {
+  branchPrefix: branchPrefix.default('work-item/'),
+  featurePrefix: branchPrefix.default('feature/'),
+  manifest: manifestTemplate.default('work-items/{id}-{slug}/sfpipe.yml'),
+};
+
+const azureBoardsSchema = z.strictObject({
+  provider: z.literal('azure-boards'),
+  organization: z
+    .string()
+    .regex(/^[A-Za-z0-9][A-Za-z0-9-]*$/, 'Oczekiwano nazwy organizacji ADO bez adresu URL, np. "contoso"')
+    .optional(),
+  project: z
+    .string()
+    .min(1)
+    .refine((value) => !/[/\\]/.test(value), { message: 'Oczekiwano nazwy projektu, nie adresu URL ani ścieżki' })
+    .optional(),
+  ...workItemCommon,
+});
+
+const githubIssuesSchema = z.strictObject({
+  provider: z.literal('github-issues'),
+  label: z.string().min(1).default('user-story'),
+  ...workItemCommon,
+});
+
+const commitsSchema = z
+  .strictObject({
+    workItem: commitTemplate('workItem').optional(),
+    feature: commitTemplate('feature').optional(),
+    maintenance: commitTemplate('maintenance').optional(),
+  })
+  .default({});
+
 const configSchema = z
   .strictObject({
-    workItem: z.strictObject({
-      provider: z.literal('github-issues'),
-      label: z.string().min(1).default('user-story'),
-      branchPrefix: z
-        .string()
-        .regex(/^[a-z0-9-]+\/$/, 'Oczekiwano prefiksu zakończonego "/", np. "wi/"')
-        .default('wi/'),
-    }),
+    workItem: z.discriminatedUnion('provider', [azureBoardsSchema, githubIssuesSchema]),
+    commits: commitsSchema,
     baseBranch: branchName.default('main'),
     environments: z.record(
       z.string().regex(ENV_NAME_RE, 'Nazwa środowiska: małe litery, cyfry i "_", np. "uat"'),
@@ -96,6 +146,19 @@ const configSchema = z
     const entries = Object.entries(config.environments);
     const issue = (message: string, envName?: string) =>
       ctx.addIssue({ code: 'custom', message, path: envName ? ['environments', envName] : ['environments'] });
+
+    const { workItem } = config;
+    if (workItem.branchPrefix === workItem.featurePrefix) {
+      ctx.addIssue({ code: 'custom', message: 'featurePrefix musi różnić się od branchPrefix', path: ['workItem', 'featurePrefix'] });
+    }
+    if (workItem.provider === 'azure-boards' && !workItem.organization !== !workItem.project) {
+      ctx.addIssue({ code: 'custom', message: 'Podaj organization i project razem albo żadne z nich', path: ['workItem'] });
+    }
+    const prefixes = [workItem.branchPrefix, workItem.featurePrefix, ...RESERVED_PREFIXES];
+    for (const [name, env] of entries) {
+      const prefix = prefixes.find((candidate) => env.branch.startsWith(candidate));
+      if (prefix) issue(`Gałąź środowiska nie może zaczynać się od "${prefix}" (prefiks gałęzi work itemów lub sfpipe)`, name);
+    }
 
     if (entries.length < 2) {
       issue('Wymagane są co najmniej dwa środowiska');
@@ -137,6 +200,35 @@ const configSchema = z
 
 export type RawConfig = z.output<typeof configSchema>;
 
+export type WorkItemConfig = RawConfig['workItem'];
+export type WorkItemProvider = WorkItemConfig['provider'];
+
+export interface CommitTemplates {
+  /** Commit on a work-item branch, e.g. `[WI-{id}] {message} — AB#{id}`. */
+  workItem: string;
+  /** Commit on a feature branch (several work items delivered together). */
+  feature: string;
+  /** Commit without a work item: dev mirror, back-sync, baseline. */
+  maintenance: string;
+}
+
+/**
+ * Azure Boards defaults match the commit-msg hook of the harness repo:
+ * `[chore|docs] …` or `[WI-<id>|FEATURE-<id>] … AB#<id>` with the same ID.
+ */
+export const DEFAULT_COMMITS: Record<WorkItemProvider, CommitTemplates> = {
+  'azure-boards': {
+    workItem: '[WI-{id}] {message} — AB#{id}',
+    feature: '[FEATURE-{id}] {message} — AB#{id}',
+    maintenance: '[chore] {message}',
+  },
+  'github-issues': {
+    workItem: '{message} (#{id})',
+    feature: '{message} (#{id})',
+    maintenance: '{message}',
+  },
+};
+
 interface ResolvedEnvBase {
   name: string;
   index: number;
@@ -163,7 +255,9 @@ export interface TargetEnv extends ResolvedEnvBase {
 export type ResolvedEnv = SourceEnv | TargetEnv;
 
 export interface ResolvedConfig {
-  workItem: RawConfig['workItem'];
+  workItem: WorkItemConfig;
+  /** Commit subject templates with provider defaults filled in. */
+  commits: CommitTemplates;
   baseBranch: string;
   tests: RawConfig['tests'];
   /** Environments in promotion order (as declared in the file). */
@@ -223,10 +317,15 @@ function resolve(raw: RawConfig): ResolvedConfig {
   });
   return {
     workItem: raw.workItem,
+    commits: { ...DEFAULT_COMMITS[raw.workItem.provider], ...definedOnly(raw.commits) },
     baseBranch: raw.baseBranch,
     tests: raw.tests,
     environments,
   };
+}
+
+function definedOnly<T extends object>(value: T): Partial<T> {
+  return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
 
 /** Walks up from `startDir` to the nearest directory containing `.sfpipe/config.yml`. */

@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { findConfigFile, loadConfig, parseConfig } from '../src/core/config.js';
+import { DEFAULT_COMMITS, findConfigFile, loadConfig, parseConfig } from '../src/core/config.js';
 import { SfpipeError } from '../src/core/errors.js';
 import { readTemplate, tempDir } from './helpers.js';
 
@@ -37,7 +37,13 @@ function errorOf(source: string): string {
 describe('parseConfig', () => {
   it('accepts the init template and resolves environments in declared order', async () => {
     const config = parseConfig(await readTemplate());
-    expect(config.workItem).toEqual({ provider: 'github-issues', label: 'user-story', branchPrefix: 'wi/' });
+    expect(config.workItem).toEqual({
+      provider: 'azure-boards',
+      branchPrefix: 'work-item/',
+      featurePrefix: 'feature/',
+      manifest: 'work-items/{id}-{slug}/sfpipe.yml',
+    });
+    expect(config.commits).toEqual(DEFAULT_COMMITS['azure-boards']);
     expect(config.environments.map((e) => [e.name, e.role, e.branch, e.orgAlias])).toEqual([
       ['dev', 'source', 'dev', 'sf-dev'],
       ['uat', 'target', 'uat', 'sf-uat'],
@@ -51,6 +57,14 @@ describe('parseConfig', () => {
 
   it('applies defaults: role target, org alias sf-<env>, base branch main, test naming', () => {
     const config = parseConfig(minimal(UAT_PROD));
+    expect(config.workItem).toEqual({
+      provider: 'github-issues',
+      label: 'user-story',
+      branchPrefix: 'work-item/',
+      featurePrefix: 'feature/',
+      manifest: 'work-items/{id}-{slug}/sfpipe.yml',
+    });
+    expect(config.commits).toEqual(DEFAULT_COMMITS['github-issues']);
     expect(config.baseBranch).toBe('main');
     expect(config.environments[0]).toMatchObject({ role: 'target', orgAlias: 'sf-uat', ignore: [] });
     expect(config.tests.naming).toEqual(['{name}Test', '{name}_Test']);
@@ -106,6 +120,24 @@ ${UAT_PROD}`;
     expect(message).toMatch(/environments\.prod\.testLevel/);
     expect(message).toMatch(/environments\.prod\.ignore\.0: Oczekiwano komponentu w postaci Typ:Nazwa/);
     expect(message).toMatch(/environments\.prod\.deployWindow: Nieprawidłowe godziny/);
+  });
+
+  it('validates work item settings', () => {
+    const azure = (settings: string, environments = UAT_PROD) =>
+      errorOf(`workItem:\n  provider: azure-boards\n${settings}\nenvironments:\n${environments}`);
+    expect(azure('  organization: contoso')).toMatch(/organization i project razem/);
+    expect(azure('  organization: https://dev.azure.com/contoso\n  project: X')).toMatch(/workItem\.organization: .*bez adresu URL/);
+    expect(azure('  branchPrefix: release/')).toMatch(/workItem\.branchPrefix: Prefiks zarezerwowany/);
+    expect(azure('  featurePrefix: work-item/')).toMatch(/featurePrefix musi różnić się/);
+    expect(azure('  manifest: work-items/{slug}.yml')).toMatch(/workItem\.manifest: /);
+    expect(azure('', UAT_PROD.replace('branch: uat', 'branch: work-item/uat'))).toMatch(/environments\.uat: .*"work-item\/"/);
+    expect(errorOf(minimal(UAT_PROD).replace('github-issues', 'jira'))).toMatch(/workItem\.provider/);
+  });
+
+  it('merges commit templates over provider defaults', () => {
+    const config = parseConfig(minimal(UAT_PROD, 'commits:\n  maintenance: "[docs] {message}"'));
+    expect(config.commits).toEqual({ ...DEFAULT_COMMITS['github-issues'], maintenance: '[docs] {message}' });
+    expect(errorOf(minimal(UAT_PROD, 'commits:\n  workItem: "{message}"'))).toMatch(/commits\.workItem: .*\{id\}/);
   });
 
   it('rejects unknown keys and env names unusable in workflows', () => {

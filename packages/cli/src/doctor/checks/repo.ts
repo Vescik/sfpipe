@@ -2,7 +2,9 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseGitHubRemote } from '../../adapters/github/client.js';
+import type { LoadedConfig } from '../../core/config.js';
 import { Git } from '../../core/git.js';
+import { findDuplicateWorkItemFolders, manifestBaseDir } from '../../core/work-item.js';
 import type { CheckGroup, CheckResult } from '../types.js';
 
 export const repoCheck: CheckGroup = {
@@ -42,6 +44,8 @@ export const repoCheck: CheckGroup = {
         : { group, title: '.forceignore', status: 'warn', detail: 'brak pliku', hint: 'Dodaj .forceignore, żeby lustro i retrieve pomijały zbędne metadane' },
     );
 
+    if (ctx.loaded) results.push(checkManifests(ctx.loaded));
+
     if (gitRoot) {
       const url = await git.remoteUrl();
       const github = url ? parseGitHubRemote(url) : undefined;
@@ -62,6 +66,28 @@ export const repoCheck: CheckGroup = {
     return results;
   },
 };
+
+/** Work-item folders are stable by ID, so two folders for one ID make the manifest ambiguous. */
+function checkManifests(loaded: LoadedConfig): CheckResult {
+  const group = 'repo';
+  const title = 'manifesty work itemów';
+  const template = loaded.config.workItem.manifest;
+  const duplicates = findDuplicateWorkItemFolders(loaded.root, template);
+  if (duplicates.size > 0) {
+    const list = [...duplicates].map(([id, names]) => `${id}: ${names.join(', ')}`).join('; ');
+    return {
+      group,
+      title,
+      status: 'warn',
+      detail: `kilka folderów dla jednego ID (${list})`,
+      hint: 'Zostaw jeden folder na work item; sfpipe nie wybiera za Ciebie',
+    };
+  }
+  const base = manifestBaseDir(template);
+  const detail =
+    !base || existsSync(path.join(loaded.root, base)) ? template : `${template} (katalog ${base}/ powstanie przy pierwszym manifeście)`;
+  return { group, title, status: 'ok', detail };
+}
 
 async function checkSfdxProject(root: string): Promise<CheckResult> {
   const group = 'repo';

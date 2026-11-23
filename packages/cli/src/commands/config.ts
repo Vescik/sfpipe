@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { loadConfig } from '../core/config.js';
+import { loadConfig, type ResolvedConfig } from '../core/config.js';
 import { formatTable } from '../format.js';
 import type { Io } from '../io.js';
 
@@ -23,5 +23,22 @@ export async function configValidateCommand(options: { cwd: string; json: boolea
         ],
   );
   io.out(`✔ ${path.relative(options.cwd, loaded.file) || loaded.file} jest poprawny\n`);
+  io.out(`${workItemSummary(loaded.config)}\n`);
   io.out(formatTable(['Środowisko', 'Rola', 'Gałąź', 'Org / Environment', 'Promocja', 'Testy', 'Okno deployu'], rows));
+}
+
+function workItemSummary(config: ResolvedConfig): string {
+  const { workItem, commits } = config;
+  const source =
+    workItem.provider === 'azure-boards'
+      ? 'Azure Boards, link AB#<id>' + (workItem.organization ? ` · ${workItem.organization} / ${workItem.project}` : '')
+      : `GitHub Issues z labelem ${workItem.label}, link #<id>`;
+  return formatTable(
+    ['Work itemy', source],
+    [
+      ['Gałęzie', `${workItem.branchPrefix}<id>-<opis>, ${workItem.featurePrefix}<id>-<opis>`],
+      ['Manifest', workItem.manifest],
+      ['Commity', [commits.workItem, commits.feature, commits.maintenance].join(' · ')],
+    ],
+  );
 }

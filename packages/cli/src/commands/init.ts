@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { copyFile, mkdir, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CONFIG_DIR, CONFIG_FILE } from '../core/config.js';
@@ -12,7 +12,6 @@ const TEMPLATE = fileURLToPath(new URL('../../templates/config.yml', import.meta
 export async function initCommand(options: { cwd: string; force: boolean }, io: Io): Promise<void> {
   const configDir = path.join(options.cwd, CONFIG_DIR);
   const configFile = path.join(configDir, CONFIG_FILE);
-  const workItemsDir = path.join(configDir, 'work-items');
 
   if (existsSync(configFile) && !options.force) {
     throw new SfpipeError(`${CONFIG_DIR}/${CONFIG_FILE} już istnieje`, 'Użyj --force, aby nadpisać');
@@ -24,19 +23,15 @@ export async function initCommand(options: { cwd: string; force: boolean }, io: 
     );
   }
 
-  await mkdir(workItemsDir, { recursive: true });
+  await mkdir(configDir, { recursive: true });
   await copyFile(TEMPLATE, configFile);
-  const keep = path.join(workItemsDir, '.gitkeep');
-  if (!existsSync(keep)) await writeFile(keep, '');
 
   io.out(
     [
-      'Utworzono:',
-      `  ${CONFIG_DIR}/${CONFIG_FILE}`,
-      `  ${CONFIG_DIR}/work-items/`,
+      `Utworzono ${CONFIG_DIR}/${CONFIG_FILE}`,
       '',
       'Dalej:',
-      '  1. Uzupełnij listę mirror.types i mapowanie users',
+      '  1. Ustaw aliasy orgów (org), mirror.types, users i deployWindow',
       '  2. sfpipe config validate',
       '  3. sfpipe doctor',
     ].join('\n'),

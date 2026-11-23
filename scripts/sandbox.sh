@@ -47,11 +47,33 @@ cd "$WORK"
 git config user.name >/dev/null || git config user.name "sfpipe sandbox"
 git config user.email >/dev/null || git config user.email "sandbox@sfpipe.invalid"
 git remote add origin "$SANDBOX/remotes/salesforce.git"
+# Odpowiednik hooka commit-msg z harnessu (scripts/git_workflow_policy.py): każdy commit
+# piaskownicy, także merge, musi mieć temat, który przepuści repo salesforce.
+cat > .git/hooks/commit-msg <<'HOOK'
+#!/bin/sh
+subject=$(head -n 1 "$1")
+printf '%s\n' "$subject" | grep -Eq '^\[(chore|docs)\] [^[:space:]]' && exit 0
+id=$(printf '%s\n' "$subject" | sed -n -E 's/^\[(WI|FEATURE)-([1-9][0-9]*)\] [^[:space:]].*/\2/p')
+if [ -n "$id" ] && [ "$(printf '%s\n' "$subject" | grep -oE 'AB#[0-9]+' | sort -u)" = "AB#$id" ]; then
+  exit 0
+fi
+echo "✖ commit-msg: temat musi zaczynać się od [chore], [docs], [WI-<id>] … AB#<id> albo [FEATURE-<id>] … AB#<id>" >&2
+exit 1
+HOOK
+chmod +x .git/hooks/commit-msg
 EXAMPLE="$REPO_ROOT/examples/sfdx-project"
 cp "$EXAMPLE/sfdx-project.json" "$EXAMPLE/.forceignore" .
 cp -R "$EXAMPLE/force-app" .
+# Jak w harnessie: jeden folder na work item, tu jeszcze pusty.
+mkdir -p work-items
+printf '# work-items\n\nJeden folder na work item: `<id>-<opis>/`.\n' > work-items/README.md
 g add -A
-g commit --quiet -m "Metadane sprzed sfpipe"
+g commit --quiet -m "[chore] import existing Salesforce metadata"
+if g commit --quiet --allow-empty -m "Metadane bez prefiksu" 2>/dev/null; then
+  echo "✖ hook commit-msg nie zadziałał" >&2
+  exit 1
+fi
+note "hook commit-msg odrzuca tematy bez [chore]/[WI-…]"
 g push --quiet -u origin main
 note "sfpipe doctor --only tools repo (przed init błąd konfiguracji jest oczekiwany)"
 sfpipe doctor --only tools repo || true
@@ -65,9 +87,9 @@ mkdir -p .github/workflows
 cp "$EXAMPLE/.github/workflows/sfpipe-doctor.yml" .github/workflows/
 sfpipe config validate
 g add -A
-g commit --quiet -m "sfpipe: konfiguracja i workflow doctor"
+g commit --quiet -m "[chore] add sfpipe configuration and doctor workflow"
 g switch --quiet main
-g merge --quiet --no-ff -m "Merge: sfpipe init" chore/sfpipe-init
+g merge --quiet --no-ff -m "[chore] merge sfpipe configuration" chore/sfpipe-init
 g branch --quiet -d chore/sfpipe-init
 g push --quiet origin main
 
@@ -91,6 +113,6 @@ cat <<EOF
   Lokalnie nie da się odtworzyć (robimy razem na GitHubie i w orgach):
     krok 1        repo sfpipe na GitHubie, tag i publikacja do GitHub Packages
     krok 3        logowanie JWT do orgów          → grupa "Orgi" w doctorze
-    kroki 4–6, 9  Environments, App, labele, rulesety → grupa "GitHub"
+    kroki 4–6, 9  Environments, App, Azure Boards, rulesety → grupa "GitHub"
     kroki 7–8     retrieve z orgów (tu uat, stage i dev są kopią main)
 EOF

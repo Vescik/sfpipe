@@ -20,7 +20,8 @@ describe('sfpipe init', () => {
     const root = sfProject();
     const io = await run(['init', '--cwd', root]);
     expect(readFileSync(path.join(root, '.sfpipe', 'config.yml'), 'utf8')).toBe(await readTemplate());
-    expect(existsSync(path.join(root, '.sfpipe', 'work-items', '.gitkeep'))).toBe(true);
+    // Manifests live next to the work item's design files, not under .sfpipe/.
+    expect(existsSync(path.join(root, '.sfpipe', 'work-items'))).toBe(false);
     expect(io.stdout.join('\n')).toContain('sfpipe config validate');
 
     await expect(run(['init', '--cwd', root])).rejects.toMatchObject({ hint: 'Użyj --force, aby nadpisać' });
@@ -39,6 +40,9 @@ describe('sfpipe config validate', () => {
     const io = await run(['config', 'validate', '--cwd', root]);
     const output = io.stdout.join('\n');
     expect(output).toContain('✔ .sfpipe/config.yml jest poprawny');
+    expect(output).toMatch(/Work itemy\s+Azure Boards, link AB#<id>/);
+    expect(output).toMatch(/Gałęzie\s+work-item\/<id>-<opis>, feature\/<id>-<opis>/);
+    expect(output).toMatch(/Manifest\s+work-items\/\{id\}-\{slug\}\/sfpipe\.yml/);
     expect(output).toMatch(/dev\s+źródło \(lustro\)\s+dev\s+sf-dev/);
     expect(output).toMatch(/prod\s+produkcja\s+main\s+sf-prod\s+release\s+RunLocalTests\s+Tue,Thu 18:00-21:00 Europe\/Warsaw/);
   });

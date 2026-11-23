@@ -1,0 +1,14 @@
+# Akcje są przypięte do SHA; Dependabot proponuje PR-y z nowymi wersjami.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      minor-patch:
+        update-types: [minor, patch]
