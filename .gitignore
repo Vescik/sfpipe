@@ -13,3 +13,6 @@ coverage/
 *.pem
 .env
 .env.*
+
+# Lokalna próba fazy 0 (scripts/sandbox.sh)
+.sandbox/

@@ -28,6 +28,7 @@ packages/cli/            CLI sfpipe (TypeScript, Node 22+)
 .github/workflows/       ci, release (GitHub Packages), doctor (reużywalny)
 examples/sfdx-project/   przykładowy projekt Salesforce z konfiguracją i workflowem
 docs/                    plan i runbooki
+scripts/sandbox.sh       lokalna próba fazy 0
 ```
 
 ## Rozwój
@@ -38,6 +39,7 @@ npm run typecheck
 npm test
 npm run build
 node packages/cli/dist/cli.js --help
+npm run sandbox    # próba fazy 0 w .sandbox/ (bez GitHuba i orgów)
 ```
 
 Wydanie: podbij wersję w `packages/cli/package.json` i wypchnij tag `vX.Y.Z`; workflow `release` opublikuje `@<owner>/sfpipe` do GitHub Packages.

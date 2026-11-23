@@ -4,6 +4,31 @@ Kroki, które wymagają Waszego dostępu do GitHuba i orgów Salesforce. Kolejno
 
 Na końcu `sfpipe doctor` (krok 10) powinien pokazać same `✔`, z jednym oczekiwanym wyjątkiem opisanym w kroku 9.
 
+## Próba lokalna
+
+Przed pracą na GitHubie i w orgach można przejść runbook na sucho:
+
+```bash
+npm run sandbox
+```
+
+Skrypt `scripts/sandbox.sh` buduje w `.sandbox/` (poza gitem) odpowiedniki kroków, które nie wymagają dostępu z zewnątrz:
+
+| Krok | Lokalnie | Na GitHubie i w orgach |
+|---|---|---|
+| 1 | `npm pack` i instalacja CLI z paczki | repo `sfpipe`, tag, GitHub Packages |
+| 2 | bare repo jako `origin` repo `salesforce`, `sfpipe init` na gałęzi z merge commitem | prawdziwe repo i PR |
+| 7–8 | `uat`, `stage` i `dev` jako kopie `main` | retrieve z każdego orga |
+| 10 | lista środowisk przez `jq` jak w `doctor.yml`, potem `sfpipe doctor` | to samo z `GH_TOKEN` i w Actions |
+
+Kroki 3–6 i 9 nie mają lokalnego odpowiednika. Dlatego w raporcie (`.sandbox/doctor.txt`) oczekiwane są:
+
+- błędy grupy *Orgi Salesforce* (brak logowania JWT, krok 3);
+- pominięta grupa *GitHub* i ostrzeżenie o `remote origin`, które nie jest repo GitHub;
+- błąd `sfdx-git-delta`, jeśli plugin nie jest zainstalowany lokalnie.
+
+Wszystkie inne pozycje powinny mieć `✔`. Żeby pracować w piaskownicy z poleceniem `sfpipe`, wykonaj `source .sandbox/env.sh` i przejdź do `.sandbox/salesforce`.
+
 ## 1. Repo `sfpipe` na GitHubie i pierwsza wersja
 
 1. Utwórz prywatne repo `sfpipe` w organizacji i wypchnij to repo:
