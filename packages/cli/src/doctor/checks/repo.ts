@@ -5,6 +5,7 @@ import { parseGitHubRemote } from '../../adapters/github/client.js';
 import type { LoadedConfig } from '../../core/config.js';
 import { Git } from '../../core/git.js';
 import { findDuplicateWorkItemFolders, manifestBaseDir } from '../../core/work-item.js';
+import { displayPath } from '../../format.js';
 import type { CheckGroup, CheckResult } from '../types.js';
 
 export const repoCheck: CheckGroup = {
@@ -24,7 +25,7 @@ export const repoCheck: CheckGroup = {
 
     if (ctx.loaded) {
       const names = ctx.loaded.config.environments.map((e) => e.name).join(' → ');
-      results.push({ group, title: 'konfiguracja', status: 'ok', detail: `${path.relative(ctx.cwd, ctx.loaded.file) || ctx.loaded.file} · ${names}` });
+      results.push({ group, title: 'konfiguracja', status: 'ok', detail: `${displayPath(ctx.cwd, ctx.loaded.file)} · ${names}` });
     } else {
       results.push({
         group,

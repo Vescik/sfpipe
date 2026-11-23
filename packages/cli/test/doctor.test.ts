@@ -63,6 +63,7 @@ describe('repo check', () => {
     writeFileSync(path.join(root, 'sfdx-project.json'), JSON.stringify({ packageDirectories: [{ path: 'force-app' }] }));
 
     let results = byTitle(await repoCheck.run(context({ cwd: root, loaded: loadedAt(root) })));
+    expect(results['konfiguracja']!.detail).toBe('.sfpipe/config.yml · dev → uat → stage → prod');
     expect(results['sfdx-project.json']).toMatchObject({ status: 'error', detail: 'brak katalogów: force-app' });
     expect(results['.forceignore']!.status).toBe('warn');
     expect(results['remote origin']).toMatchObject({ status: 'ok', detail: 'github.com/acme/salesforce' });

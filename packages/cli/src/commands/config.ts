@@ -1,6 +1,5 @@
-import path from 'node:path';
 import { loadConfig, type ResolvedConfig } from '../core/config.js';
-import { formatTable } from '../format.js';
+import { displayPath, formatTable } from '../format.js';
 import type { Io } from '../io.js';
 
 export async function configValidateCommand(options: { cwd: string; json: boolean }, io: Io): Promise<void> {
@@ -22,7 +21,7 @@ export async function configValidateCommand(options: { cwd: string; json: boolea
           env.deployWindow ?? '—',
         ],
   );
-  io.out(`✔ ${path.relative(options.cwd, loaded.file) || loaded.file} jest poprawny\n`);
+  io.out(`✔ ${displayPath(options.cwd, loaded.file)} jest poprawny\n`);
   io.out(`${workItemSummary(loaded.config)}\n`);
   io.out(formatTable(['Środowisko', 'Rola', 'Gałąź', 'Org / Environment', 'Promocja', 'Testy', 'Okno deployu'], rows));
 }
