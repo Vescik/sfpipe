@@ -19,3 +19,4 @@ coverage/
 
 # Paczka repo do przeniesienia na inny komputer
 *.bundle
+__pycache__/

@@ -2,6 +2,8 @@
 
 > Status: propozycja do akceptacji · v4 · 2026-11-23
 >
+> **Wersja uproszczona (2026-11-23):** zamiast CLI `sfpipe` zestaw `kit/`: workflowy `sf-deploy`, `sf-promote`, `sf-release`, `sf-back-sync` i skrypty kopiowane do repo `salesforce`. Ten sam model gałęzi (§4) i deploy-then-merge (§9); bez lustra dev, overlapu i rollbacku w pierwszej wersji. Opis: `kit/README.md`.
+>
 > **Zmiany w v4:** dopasowanie do repo w układzie harnessu (§16): User Story w Azure Boards linkowane przez `AB#<id>` zamiast GitHub Issues, gałęzie `work-item/<id>-<opis>` i `feature/<id>-<opis>`, manifest US w `work-items/<id>-<opis>/sfpipe.yml`, tematy commitów zgodne z hookiem harnessu, CI narzędzia także na Windows.
 >
 > v3: całość na GitHubie zamiast Azure DevOps: repo zostaje tam, gdzie jest (bez migracji), CI to GitHub Actions, akceptacje i sekrety w GitHub Environments, User Story jako GitHub Issues + Projects (§11).

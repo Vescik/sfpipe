@@ -1,0 +1,39 @@
+# Promocja jednego US na UAT: Actions → sf-promote → Run workflow → ID work itemu.
+# Tworzy promote/<id>/uat (uat + merge gałęzi US) i PR z auto-merge; deploy robi sf-deploy.
+# PR otwiera GitHub App, bo PR-y otwarte tokenem GITHUB_TOKEN nie uruchamiają innych workflowów.
+name: sf-promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      work_item:
+        description: ID work itemu z Azure Boards, np. 5001
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sf-promote-${{ inputs.work_item }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.SF_PIPELINE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.SF_PIPELINE_APP_KEY }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+      - name: Promocja
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          WORK_ITEM: ${{ inputs.work_item }}
+        run: bash .github/sf-pipeline/promote.sh "$WORK_ITEM"

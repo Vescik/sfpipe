@@ -1,0 +1,37 @@
+{
+  "sourceDir": "force-app",
+  "flow": {
+    "workItems": "uat",
+    "release": "stage",
+    "production": "main"
+  },
+  "workItemBranches": {
+    "work-item/": "workItem",
+    "feature/": "feature"
+  },
+  "commits": {
+    "workItem": "[WI-{id}] {message} — AB#{id}",
+    "feature": "[FEATURE-{id}] {message} — AB#{id}",
+    "maintenance": "[chore] {message}"
+  },
+  "testNaming": ["{name}Test", "{name}_Test"],
+  "branches": {
+    "uat": {
+      "environment": "sf-uat",
+      "testLevel": "RunSpecifiedTests",
+      "allowedSources": ["promote/", "sync/"]
+    },
+    "stage": {
+      "environment": "sf-stage",
+      "testLevel": "RunLocalTests",
+      "allowedSources": ["release/", "sync/"]
+    },
+    "main": {
+      "environment": "sf-prod",
+      "testLevel": "RunLocalTests",
+      "allowedSources": ["release/"],
+      "production": true,
+      "deployWindow": "Tue,Thu 18:00-21:00 Europe/Warsaw"
+    }
+  }
+}

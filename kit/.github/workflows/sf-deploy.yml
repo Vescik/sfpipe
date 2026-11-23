@@ -1,0 +1,101 @@
+# Deploy-then-merge: PR do gałęzi środowiska → plan paczki → akceptacja w GitHub Environment → deploy.
+# Wymagane checki w rulesetach: sf-plan i sf-deploy. PR z auto-merge wchodzi dopiero po udanym deployu.
+# Paczka = różnica między gałęzią środowiska a stanem po merge'u PR-a (sfdx-git-delta).
+name: sf-deploy
+
+on:
+  pull_request:
+    # DOSTOSUJ: te same gałęzie co w .github/sf-pipeline/config.json → branches
+    branches: [uat, stage, main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+env:
+  SF_CLI_VERSION: 2.159.7
+  SGD_VERSION: 6.45.1
+  SF_PIPELINE: .github/sf-pipeline
+
+jobs:
+  plan:
+    name: sf-plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      has_changes: ${{ steps.plan.outputs.has_changes }}
+      environment: ${{ steps.plan.outputs.environment }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2 # commit merge'u PR-a i jego pierwszy rodzic = gałąź środowiska
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: sf CLI i sfdx-git-delta
+        run: |
+          npm install --global "@salesforce/cli@${SF_CLI_VERSION}"
+          echo y | sf plugins install "sfdx-git-delta@${SGD_VERSION}"
+      - name: Plan paczki
+        id: plan
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: python3 "$SF_PIPELINE/pipeline.py" plan --from HEAD~1 --to HEAD --base "$BASE_REF" --head "$HEAD_REF"
+
+  deploy:
+    name: sf-deploy
+    needs: plan
+    # Bez zmian w metadanych job jest pomijany, a pominięty wymagany check GitHub liczy jako zaliczony.
+    if: needs.plan.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    environment: ${{ needs.plan.outputs.environment }}
+    concurrency:
+      group: sf-deploy-${{ github.base_ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: sf CLI i sfdx-git-delta
+        run: |
+          npm install --global "@salesforce/cli@${SF_CLI_VERSION}"
+          echo y | sf plugins install "sfdx-git-delta@${SGD_VERSION}"
+      - name: Gałąź środowiska bez zmian od planu
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          planned="$(git rev-parse HEAD~1)"
+          current="$(git ls-remote origin "refs/heads/${BASE_REF}" | cut -f1)"
+          if [ "$planned" != "$current" ]; then
+            echo "::error::${BASE_REF} zmieniła się od startu tego runu (wszedł inny PR). Kliknij Update branch w PR-ze; plan i deploy ruszą od nowa."
+            exit 1
+          fi
+      - name: Plan paczki (ten sam commit co w sf-plan)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: python3 "$SF_PIPELINE/pipeline.py" plan --from HEAD~1 --to HEAD --base "$BASE_REF" --head "$HEAD_REF"
+      - name: Okno deployu
+        run: python3 "$SF_PIPELINE/pipeline.py" window-check .sfdelta/plan.json
+      - name: Logowanie JWT do orga
+        env:
+          SF_CLIENT_ID: ${{ secrets.SF_CLIENT_ID }}
+          SF_USERNAME: ${{ secrets.SF_USERNAME }}
+          SF_INSTANCE_URL: ${{ secrets.SF_INSTANCE_URL }}
+          SF_JWT_KEY: ${{ secrets.SF_JWT_KEY }}
+        run: |
+          # Klucz zostaje w RUNNER_TEMP do końca joba (sf odświeża nim sesję); runner czyści katalog po jobie.
+          key="${RUNNER_TEMP}/sf-jwt.key"
+          (umask 077 && printf '%s\n' "${SF_JWT_KEY}" > "${key}")
+          sf org login jwt --client-id "${SF_CLIENT_ID}" --jwt-key-file "${key}" \
+            --username "${SF_USERNAME}" --instance-url "${SF_INSTANCE_URL}" --alias target
+      - name: Deploy
+        run: |
+          args=()
+          while IFS= read -r arg; do args+=("$arg"); done < <(python3 "$SF_PIPELINE/pipeline.py" deploy-args .sfdelta/plan.json)
+          sf project deploy start --target-org target --wait 240 "${args[@]}"

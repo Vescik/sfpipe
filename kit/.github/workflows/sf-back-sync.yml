@@ -1,0 +1,34 @@
+# Back-sync: po każdej zmianie main otwiera PR-y main → stage i main → uat,
+# gdy brakuje tam commitów z main (np. hotfixu). Deploy robi sf-deploy na tych PR-ach.
+name: sf-back-sync
+
+on:
+  push:
+    branches: [main] # DOSTOSUJ: gałąź produkcji z config.json → flow.production
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sf-back-sync
+  cancel-in-progress: false
+
+jobs:
+  back-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.SF_PIPELINE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.SF_PIPELINE_APP_KEY }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+      - name: Back-sync
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: bash .github/sf-pipeline/back-sync.sh

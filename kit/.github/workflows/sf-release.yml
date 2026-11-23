@@ -1,0 +1,58 @@
+# Release: Actions → sf-release → Run workflow.
+#   create  release/<nazwa> = main + wybrane US z uat, PR do stage
+#   update  merge aktualnego main (np. po hotfixie) i ewentualnie kolejnych US
+#   ship    PR tej samej gałęzi do main (po testach na stage); deploy na prod zatwierdza PO
+name: sf-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: create, update albo ship
+        type: choice
+        options: [create, update, ship]
+        required: true
+      name:
+        description: Nazwa release'u, np. 2026.12
+        type: string
+        required: true
+      work_items:
+        description: ID work itemów oddzielone spacjami (create, update), np. 5001 5002
+        type: string
+        required: false
+      skip_uat_check:
+        description: Pozwól dodać US, którego nie ma w uat (pilny hotfix)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sf-release-${{ inputs.name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.SF_PIPELINE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.SF_PIPELINE_APP_KEY }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+      - name: Release
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          ACTION: ${{ inputs.action }}
+          NAME: ${{ inputs.name }}
+          WORK_ITEMS: ${{ inputs.work_items }}
+          SKIP_UAT_CHECK: ${{ inputs.skip_uat_check }}
+        run: |
+          set -f # ID-y są tylko dzielone na słowa, bez rozwijania wzorców
+          bash .github/sf-pipeline/release.sh "$ACTION" "$NAME" $(printf '%s' "$WORK_ITEMS" | tr ',' ' ')

@@ -2,6 +2,8 @@
 
 Pipeline wdrożeń Salesforce oparty na work-itemach (1 User Story = 1 gałąź), dla czterech środowisk `dev → uat → stage → prod`, na GitHubie (Actions, Environments). User Story w Azure Boards (`AB#<id>`); konwencje gałęzi, manifestów i commitów zgodne z repo w układzie harnessu (docs/PLAN.md §16).
 
+**Najprościej: [kit/](kit/README.md)** — workflowy GitHub Actions i skrypty do skopiowania do istniejącego repo Salesforce, bez instalowania programu ani paczek. Instrukcja krok po kroku: [kit/README.md](kit/README.md).
+
 - Plan funkcjonalności: [docs/PLAN.md](docs/PLAN.md)
 - Faza 0, kroki do wykonania w GitHubie i Salesforce: [docs/runbooks/faza-0.md](docs/runbooks/faza-0.md)
 
