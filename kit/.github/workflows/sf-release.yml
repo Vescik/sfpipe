@@ -54,5 +54,5 @@ jobs:
           WORK_ITEMS: ${{ inputs.work_items }}
           SKIP_UAT_CHECK: ${{ inputs.skip_uat_check }}
         run: |
-          set -f # ID-y są tylko dzielone na słowa, bez rozwijania wzorców
-          bash .github/sf-pipeline/release.sh "$ACTION" "$NAME" $(printf '%s' "$WORK_ITEMS" | tr ',' ' ')
+          read -r -a ids <<< "${WORK_ITEMS//,/ }" # "5001 5002" albo "5001,5002"
+          bash .github/sf-pipeline/release.sh "$ACTION" "$NAME" "${ids[@]}"

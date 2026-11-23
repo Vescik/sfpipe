@@ -44,5 +44,6 @@ jobs:
         run: |
           scope="${OWNER,,}"
           npm pkg set name="@${scope}/sfpipe" repository.type=git repository.url="git+https://github.com/${REPOSITORY}.git"
+          # shellcheck disable=SC2016 # ${NODE_AUTH_TOKEN} trafia do .npmrc dosłownie; npm podstawia go z env
           printf '@%s:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}\n' "${scope}" > .npmrc
           npm publish

@@ -52,6 +52,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ github.token }}
         run: |
           scope="${OWNER,,}"
+          # shellcheck disable=SC2016 # ${NODE_AUTH_TOKEN} trafia do .npmrc dosłownie; npm podstawia go z env
           printf '@%s:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}\n' "${scope}" >> ~/.npmrc
           npm install --global "@salesforce/cli@${SF_CLI_VERSION}" "@${scope}/sfpipe@${SFPIPE_VERSION}"
           echo y | sf plugins install "sfdx-git-delta@${SGD_VERSION}"
@@ -93,6 +94,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ github.token }}
         run: |
           scope="${OWNER,,}"
+          # shellcheck disable=SC2016 # ${NODE_AUTH_TOKEN} trafia do .npmrc dosłownie; npm podstawia go z env
           printf '@%s:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}\n' "${scope}" >> ~/.npmrc
           npm install --global "@salesforce/cli@${SF_CLI_VERSION}" "@${scope}/sfpipe@${SFPIPE_VERSION}"
       - name: Logowanie JWT do ${{ matrix.env.alias }}
