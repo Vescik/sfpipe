@@ -1,0 +1,5 @@
+# Pliki pomijane przy deployu, retrieve i w lustrze dev
+**/jsconfig.json
+**/.eslintrc.json
+**/__tests__/**
+**/*.dup

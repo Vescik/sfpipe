@@ -1,0 +1,61 @@
+# Konfiguracja sfpipe (opis: docs/PLAN.md §8 w repo sfpipe).
+# Kolejność środowisk poniżej = kolejność promocji.
+# Alias orga (`org`) jest też nazwą GitHub Environment z sekretami; domyślnie sf-<środowisko>.
+
+workItem:
+  provider: github-issues
+  label: user-story            # issue z tym labelem to User Story
+  branchPrefix: wi/
+
+baseBranch: main               # gałąź produkcji
+
+environments:
+  dev:
+    role: source               # tu się buduje; gałąź dev jest lustrem orga
+    branch: dev
+    org: sf-dev
+    mirror:
+      incremental: "0 6-16 * * 1-5"   # cron w UTC: co godzinę w godzinach pracy
+      full: "0 1 * * *"               # cron w UTC: pełne uzgodnienie w nocy
+      types:
+        - ApexClass
+        - ApexTrigger
+        - ApexPage
+        - LightningComponentBundle
+        - AuraDefinitionBundle
+        - CustomObject
+        - CustomField
+        - ValidationRule
+        - RecordType
+        - Flow
+        - Layout
+        - FlexiPage
+        - PermissionSet
+        - CustomLabels
+        - CustomMetadata
+    # Użytkownik Salesforce w dev → e-mail autora commitów lustra, np.
+    # jan.kowalski@firma.pl.dev: jan.kowalski@firma.pl
+    users: {}
+
+  uat:
+    branch: uat
+    org: sf-uat
+    promotion: work-item       # pojedyncze US przez promote/…
+    testLevel: RunSpecifiedTests
+
+  stage:
+    branch: stage
+    org: sf-stage
+    promotion: release         # release candidate
+    testLevel: RunLocalTests
+
+  prod:
+    branch: main
+    org: sf-prod
+    promotion: release
+    testLevel: RunLocalTests
+    deployWindow: "Tue,Thu 18:00-21:00 Europe/Warsaw"   # sfpipe nie wdroży na prod poza oknem
+    ignore: []                 # komponenty, które nigdy nie idą na prod, np. ApexClass:DebugUtils
+
+tests:
+  naming: ["{name}Test", "{name}_Test"]   # automatyczne wykrywanie klas testowych

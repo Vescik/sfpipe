@@ -1,0 +1,114 @@
+# Reużywalny workflow `sfpipe doctor` dla repo salesforce (on: workflow_call).
+#
+# Job `repo` sprawdza narzędzia, repo, gałęzie, rulesety i Environments.
+# Joby `org` (opcjonalne, check-orgs: true) logują się do każdego orga sekretami z GitHub
+# Environment sf-<środowisko>. Environments z required reviewers poproszą o akceptację,
+# a ograniczenie "deployment branches" może zablokować uruchomienie z main.
+name: sfpipe doctor
+
+on:
+  workflow_call:
+    inputs:
+      sfpipe-version:
+        description: Wersja @<owner>/sfpipe z GitHub Packages
+        type: string
+        required: true
+      check-orgs:
+        description: Czy logować się do orgów i sprawdzać je
+        type: boolean
+        default: false
+      node-version:
+        type: string
+        default: '24'
+      sf-cli-version:
+        type: string
+        default: '2.159.7'
+      sgd-version:
+        type: string
+        default: '6.45.1'
+
+jobs:
+  repo:
+    name: repo, gałęzie, GitHub
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      environments: ${{ steps.envs.outputs.environments }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ inputs.node-version }}
+      - name: Narzędzia (sf CLI, sfdx-git-delta, sfpipe)
+        env:
+          OWNER: ${{ github.repository_owner }}
+          SF_CLI_VERSION: ${{ inputs.sf-cli-version }}
+          SGD_VERSION: ${{ inputs.sgd-version }}
+          SFPIPE_VERSION: ${{ inputs.sfpipe-version }}
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: |
+          scope="${OWNER,,}"
+          printf '@%s:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}\n' "${scope}" >> ~/.npmrc
+          npm install --global "@salesforce/cli@${SF_CLI_VERSION}" "@${scope}/sfpipe@${SFPIPE_VERSION}"
+          echo y | sf plugins install "sfdx-git-delta@${SGD_VERSION}"
+          sf --version
+          sfpipe --version
+      # Przed doctorem: błędy doctora nie mogą zablokować sprawdzenia orgów.
+      - name: Lista środowisk z konfiguracji
+        id: envs
+        run: |
+          echo "environments=$(sfpipe config validate --json | jq -c '[.config.environments[] | {name, alias: .orgAlias}]')" >> "$GITHUB_OUTPUT"
+      - name: sfpipe doctor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sfpipe doctor --only tools repo branches github
+
+  org:
+    name: org ${{ matrix.env.name }}
+    needs: repo
+    if: inputs.check-orgs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        env: ${{ fromJSON(needs.repo.outputs.environments) }}
+    environment: ${{ matrix.env.alias }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ inputs.node-version }}
+      - name: Narzędzia (sf CLI, sfpipe)
+        env:
+          OWNER: ${{ github.repository_owner }}
+          SF_CLI_VERSION: ${{ inputs.sf-cli-version }}
+          SFPIPE_VERSION: ${{ inputs.sfpipe-version }}
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: |
+          scope="${OWNER,,}"
+          printf '@%s:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}\n' "${scope}" >> ~/.npmrc
+          npm install --global "@salesforce/cli@${SF_CLI_VERSION}" "@${scope}/sfpipe@${SFPIPE_VERSION}"
+      - name: Logowanie JWT do ${{ matrix.env.alias }}
+        env:
+          ALIAS: ${{ matrix.env.alias }}
+          SF_CLIENT_ID: ${{ secrets.SF_CLIENT_ID }}
+          SF_USERNAME: ${{ secrets.SF_USERNAME }}
+          SF_INSTANCE_URL: ${{ secrets.SF_INSTANCE_URL }}
+          SF_JWT_KEY: ${{ secrets.SF_JWT_KEY }}
+        run: |
+          # Klucz zostaje w RUNNER_TEMP do końca joba (sf odświeża nim sesję); runner czyści katalog po jobie.
+          key="${RUNNER_TEMP}/sf-jwt.key"
+          (umask 077 && printf '%s\n' "${SF_JWT_KEY}" > "${key}")
+          sf org login jwt --client-id "${SF_CLIENT_ID}" --jwt-key-file "${key}" \
+            --username "${SF_USERNAME}" --instance-url "${SF_INSTANCE_URL}" --alias "${ALIAS}"
+      - name: sfpipe doctor
+        env:
+          ENV_NAME: ${{ matrix.env.name }}
+        run: sfpipe doctor --only orgs --env "${ENV_NAME}"

@@ -1,0 +1,48 @@
+# Publikuje CLI do GitHub Packages po wypchnięciu tagu vX.Y.Z.
+# Paczka dostaje scope właściciela repo: @<owner>/sfpipe (GitHub Packages wymaga scope).
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      - name: Wersja z tagu zgadza się z package.json
+        working-directory: packages/cli
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "v${version}" != "${TAG}" ]; then
+            echo "::error::Tag ${TAG} nie pasuje do wersji ${version} w packages/cli/package.json"
+            exit 1
+          fi
+
+      - name: Publikacja do GitHub Packages
+        working-directory: packages/cli
+        env:
+          OWNER: ${{ github.repository_owner }}
+          REPOSITORY: ${{ github.repository }}
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: |
+          scope="${OWNER,,}"
+          npm pkg set name="@${scope}/sfpipe" repository.type=git repository.url="git+https://github.com/${REPOSITORY}.git"
+          printf '@%s:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}\n' "${scope}" > .npmrc
+          npm publish

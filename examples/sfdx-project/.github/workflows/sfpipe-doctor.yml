@@ -1,0 +1,21 @@
+# Wywołanie reużywalnego workflowu z repo sfpipe.
+# Zamień TWOJA-ORGANIZACJA na właściciela repo sfpipe.
+name: sfpipe doctor
+
+on:
+  workflow_dispatch:
+    inputs:
+      check-orgs:
+        description: Zaloguj się do orgów i sprawdź je (Environments poproszą o akceptację)
+        type: boolean
+        default: false
+
+jobs:
+  doctor:
+    uses: TWOJA-ORGANIZACJA/sfpipe/.github/workflows/doctor.yml@v0.1.0
+    with:
+      sfpipe-version: 0.1.0
+      check-orgs: ${{ inputs.check-orgs }}
+    permissions:
+      contents: read
+      packages: read

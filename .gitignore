@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.DS_Store
+
+# Salesforce CLI
+.sf/
+.sfdx/
+
+# Sekrety: klucze JWT i lokalne zmienne nigdy nie trafiają do repo
+*.key
+*.pem
+.env
+.env.*

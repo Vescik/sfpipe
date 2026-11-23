@@ -1,0 +1,10 @@
+{
+  "name": "sfpipe-example",
+  "packageDirectories": [
+    {
+      "path": "force-app",
+      "default": true
+    }
+  ],
+  "sfdcLoginUrl": "https://login.salesforce.com"
+}
